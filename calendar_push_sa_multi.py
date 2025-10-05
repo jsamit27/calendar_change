@@ -138,9 +138,11 @@ async def init_watch():
 
 @app.post("/calendar/push")
 async def calendar_push(request: Request):
+    import requests  # local import is fine for small scripts
+
     # Identify which channel (and thus which calendar) this push is for
     channel_id = request.headers.get("X-Goog-Channel-ID")
-    resource_state = request.headers.get("X-Goog-Resource-State")  # e.g., "exists", "sync"
+    resource_state = request.headers.get("X-Goog-Resource-State")
     channels = load_channels()
     meta = channels.get(channel_id)
 
@@ -178,6 +180,22 @@ async def calendar_push(request: Request):
                     if ev_id in state["events"]:
                         print(f"[{calendar_id}] 🔴 DELETED:", ev_id)
                         state["events"].pop(ev_id, None)
+                        # --- call your external endpoint here ---
+                        payload = {
+                            "calendar_id": calendar_id,
+                            "redis_url": "redis://default:675d88cdab9e49858ccd124a7e643914@fly-efficient-ai-1.upstash.io:6379"
+                        }
+                        headers = {
+                            "Content-Type": "application/json",
+                            "x-api-key": "https://cron-jobs-for-everyone.fly.dev/popuate-redis"
+                        }
+                        try:
+                            r = requests.post("https://cron-jobs-for-everyone.fly.dev/populate-redis",
+                                              json=payload, headers=headers, timeout=10)
+                            print(f"POST → {r.status_code} | {r.text[:100]}")
+                        except Exception as e:
+                            print(f"POST failed: {e}")
+
                 else:
                     prev = state["events"].get(ev_id)
                     if prev is None:
@@ -186,6 +204,22 @@ async def calendar_push(request: Request):
                         print(f"[{calendar_id}] 🟡 UPDATED:", describe(ev))
                     state["events"][ev_id] = ev.get("etag")
 
+                    # --- same POST request for created/updated ---
+                    payload = {
+                        "calendar_id": calendar_id,
+                        "redis_url": "redis://default:675d88cdab9e49858ccd124a7e643914@fly-efficient-ai-1.upstash.io:6379"
+                    }
+                    headers = {
+                        "Content-Type": "application/json",
+                        "x-api-key": "https://cron-jobs-for-everyone.fly.dev/popuate-redis"
+                    }
+                    try:
+                        r = requests.post("https://cron-jobs-for-everyone.fly.dev/populate-redis",
+                                          json=payload, headers=headers, timeout=10)
+                        print(f"POST → {r.status_code} | {r.text[:100]}")
+                    except Exception as e:
+                        print(f"POST failed: {e}")
+
             page = res.get("nextPageToken")
             if not page:
                 # persist new syncToken
@@ -193,13 +227,11 @@ async def calendar_push(request: Request):
                 save_json(spath, state)
                 break
 
-        # Optionally log empty pushes
         if total == 0:
             print(f"[{calendar_id}] push '{resource_state}' with no diffs")
 
     except HttpError as e:
         if getattr(e, "resp", None) and e.resp.status == 410:
-            # sync token expired, rebuild baseline next time
             print(f"[{calendar_id}] Sync token expired; reseeding baseline...")
             state["syncToken"] = None
             save_json(spath, state)
@@ -207,6 +239,7 @@ async def calendar_push(request: Request):
             print(f"[{calendar_id}] HTTP error in push handler:", e)
 
     return Response(status_code=200)
+
 
 @app.post("/stop_watch")
 async def stop_watch():
