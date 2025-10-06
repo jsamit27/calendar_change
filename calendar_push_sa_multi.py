@@ -178,7 +178,7 @@ async def calendar_push(request: Request):
                 ev_id = ev["id"]
                 if ev.get("status") == "cancelled":
                     if ev_id in state["events"]:
-                        print(f"[{calendar_id}] 🔴 DELETED:", ev_id)
+                        print(f"[{calendar_id}] 🔴 DELETED: {ev_id}")
                         state["events"].pop(ev_id, None)
                         # --- call your external endpoint here ---
                         payload = {
@@ -199,9 +199,10 @@ async def calendar_push(request: Request):
                 else:
                     prev = state["events"].get(ev_id)
                     if prev is None:
-                        print(f"[{calendar_id}] 🟢 CREATED:", describe(ev))
+                        print(f"[{calendar_id}] 🟢 CREATED: {ev_id} | {describe(ev)}")
+
                     elif prev != ev.get("etag"):
-                        print(f"[{calendar_id}] 🟡 UPDATED:", describe(ev))
+                        print(f"[{calendar_id}] 🟡 UPDATED: {ev_id} | {describe(ev)}")
                     state["events"][ev_id] = ev.get("etag")
 
                     # --- same POST request for created/updated ---
